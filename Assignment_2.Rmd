@@ -1,0 +1,190 @@
+---
+title: "Assignment 2 - Rama Kanetkar, Zhengping Duan, Ziqi Liu"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r preparation}
+library(tidyverse)
+library(reshape2)
+library(ggplot2)
+library(xts)
+library(zoo)
+house.data <- read.csv("kc_house_data.csv")
+```
+
+SECTION 1: Location analysis
+This section analyses the relationship between location and house price. The involved columns are: 1) Zip code 2) latitude 3) longititude
+
+```{r}
+price_location <- house.data[,c(3,17,18,19)]
+zipCode_Price <- price_location[,c(1,2)]
+groupped <- melt(zipCode_Price,id.vars = c("price","zipcode")) %>% group_by(zipcode)
+priceByZipcode <- groupped %>% summarise( price = mean(price))
+priceByZipcode <- priceByZipcode[order(-priceByZipcode$price),]
+priceByZipcode$zipcode <- factor(priceByZipcode$zipcode, levels = priceByZipcode$zipcode)
+TopTenPrice <- head(priceByZipcode,n = 10) 
+```
+
+```{r Draw Plot}
+ggplot(TopTenPrice, aes(x=TopTenPrice$zipcode, y=TopTenPrice$price)) + 
+  geom_bar(stat="identity", width=.5, fill="tomato3") + 
+  labs(title="Ordered Mean Price&Zip Chart", 
+       subtitle="Price Vs Zipcode", 
+       caption="source: US dollar") + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+
+SECTION 2: Time series analysis
+Involved column: Date
+
+```{r}
+library(zoo)
+
+housePriceByTime <- house.data[,c(2,3)]
+housePriceByTime[,1]<- substr(housePriceByTime[,1],start = 1,stop = 8)
+housePriceByTime[,1]<- as.Date(housePriceByTime[,1],"%Y%m%d")
+housePriceByTime$price <- as.numeric(housePriceByTime$price)
+housePriceByTime <- xts(as.matrix(housePriceByTime[,-1]), order.by = housePriceByTime$date)
+
+```
+
+```{r}
+xts5_quarterly <- split(housePriceByTime,f="quarters")
+quaterlyAvgPrice <- lapply(xts5_quarterly,FUN=mean)
+df <- data.frame("price" = round(as.numeric(quaterlyAvgPrice),2),"quarter"=c("2014Q2","2014Q3","2014Q4","2015Q1","2015Q2"))
+
+
+ggplot(data=df,mapping = aes(x = df$quarter,y = df$price))+
+  geom_bar(stat="identity", width=.5, fill="tomato3") + 
+  labs(title="Ordered Mean Price&Quarter", 
+       subtitle="Price Vs quarter", 
+       caption="source: US dollar") + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+
+```
+
+SECTION 3: House condition analysis
+Invovled column: 1) condition 2_ year_built 3) year_renovated
+This section aims to analyze the correlation between the condition of the house and the selling price. 
+
+```{r}
+HouseCondition <- house.data[,c(3,11,15,16)]
+
+cor.test(HouseCondition$price,HouseCondition$condition)
+
+cor.test(HouseCondition$price,HouseCondition$yr_built)
+
+ggplot(HouseCondition, aes(x=yr_built, y=price)) + 
+  geom_point() + 
+  geom_smooth(method="loess", se=F) + 
+  labs(subtitle="Price Vs built year", 
+       y="Price", 
+       x="year Built", 
+       title="Scatterplot" )
+
+cor.test(HouseCondition$price,HouseCondition$yr_renovated)
+revocated_Yes <- HouseCondition[HouseCondition[,4]!= 0,]
+ggplot(revocated_Yes, aes(x=yr_renovated, y=price)) + 
+  geom_point() + 
+  geom_smooth(method="loess", se=F) + 
+  labs(subtitle="Price Vs built year", 
+       y="Price", 
+       x="year renovated", 
+       title="Scatterplot" )
+
+```
+
+SECTION 4: Grade analysis
+Invovled coloumn: grade
+Each buyers have grade of each house given by real estate agency for reference. We want to exam if the associated grade will influence the price of the house
+
+```{r}
+HouseGrade <- house.data[,c(3,12)]
+fit <- lm(HouseGrade$price~HouseGrade$grade)
+
+ggplot() +
+  geom_point(aes(x = HouseGrade$grade, y =HouseGrade$price),
+             colour = 'red') +
+  geom_line(aes(x = HouseGrade$grade, y = fit$coefficients[1]+fit$coefficients[2]*as.numeric(HouseGrade$grade)),
+            colour = 'blue') +
+  ggtitle('Grade vs Price') +
+  xlab('Grade') +
+  ylab('Price')
+
+```
+
+SECTION 5: View Analysis
+Invovled column: view
+In this section, we want to analyze if house price is related to number of views by other potential buyers. We suspect that more views might result high price.
+
+```{r}
+colnames(house.data)
+HouseView <- house.data[,c(3,10)]
+cor.test(HouseView$price,HouseView$view)
+```
+
+
+SECTION 6: House features analysis
+The inolved columns in this section are: 1) bedrooms 2) bathrooms 3) sqft_living 4) sqft_ot 5) floors 6) waterfront 7) sqft_above 8) sqft_basement 9) sqft_living15 10) sqft_lot15
+The section below analyzes the correlation between price and each attribute. It aims to find the highly correlated features that can be applied in the house price prediction model.
+
+```{r hourse features}
+house.infrastruct = house.data[,c(1,3,4,5,8,9,13,14,20,21)]
+head(house.infrastruct)
+
+```
+
+
+```{r house features summary}
+sapply(house.infrastruct,summary)
+```
+```{r defin aggregate function}
+find.aggregate <- function(agg.col,grpby.col) {
+
+  tempDF <- aggregate(agg.col ~ grpby.col, house.infrastruct,mean)
+  barplot(tempDF$agg.col,ylab = "House Price", names.arg = tempDF$grpby.col)
+}
+```
+
+
+```{r}
+cor.test(house.infrastruct$price,house.infrastruct$bedrooms)
+find.aggregate(house.infrastruct$price,house.infrastruct$bedrooms)
+```
+
+```{r}
+cor.test(house.infrastruct$price,house.infrastruct$bathrooms)
+find.aggregate(house.infrastruct$price,house.infrastruct$bathrooms)
+```
+
+```{r}
+cor.test(house.infrastruct$price,house.infrastruct$floors)
+find.aggregate(house.infrastruct$price,house.infrastruct$floors)
+```
+
+```{r}
+cor.test(house.infrastruct$price,house.infrastruct$waterfront)
+find.aggregate(house.infrastruct$price,house.infrastruct$waterfront)
+```
+
+```{r}
+cor.test(house.infrastruct$price,house.infrastruct$sqft_above)
+
+cor.test(house.infrastruct$price,house.infrastruct$sqft_basement)
+
+cor.test(house.infrastruct$price,house.infrastruct$sqft_living15)
+
+cor.test(house.infrastruct$price,house.infrastruct$sqft_lot15)
+
+```
+
+```{r}
+cor(house.infrastruct)
+```
+
+
